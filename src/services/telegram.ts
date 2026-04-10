@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 
-import { env } from '../config/env.js';
+import { env, requireEnv } from '../config/env.js';
 
 type TelegramSendMessageResponse = {
   ok: boolean;
@@ -15,7 +15,8 @@ export function verifyTelegramSecret(req: Request): boolean {
 }
 
 export async function telegramSendMessage(chatId: string, text: string) {
-  const resp = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  const token = requireEnv('TELEGRAM_BOT_TOKEN');
+  const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

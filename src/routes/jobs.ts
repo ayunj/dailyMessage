@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { env } from '../config/env.js';
+import { env, requireEnv } from '../config/env.js';
 import { listEnabledChats } from '../repos/chatRepo.js';
 import { telegramSendMessage } from '../services/telegram.js';
 import { generateDailyJapanese } from '../services/gemini.js';
@@ -8,6 +8,8 @@ import { generateDailyJapanese } from '../services/gemini.js';
 export const jobsRouter = express.Router();
 
 function verifyJobsKey(req: express.Request) {
+  // If not configured, always deny.
+  if (!env.JOBS_API_KEY) return false;
   const got = req.header('x-jobs-api-key');
   return got && got === env.JOBS_API_KEY;
 }
@@ -18,6 +20,8 @@ jobsRouter.post('/ask-now', async (req, res) => {
       return res.status(401).send('unauthorized');
     }
 
+    // Ensure required secrets exist (gives clearer error than "container won't start").
+    requireEnv('JOBS_API_KEY');
     const chats = await listEnabledChats();
     if (chats.length === 0) {
       return res.status(200).json({ ok: true, sent: 0 });

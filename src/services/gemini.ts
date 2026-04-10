@@ -1,4 +1,4 @@
-import { env } from '../config/env.js';
+import { env, requireEnv } from '../config/env.js';
 
 type GeminiGenerateResponse = {
   candidates?: Array<{
@@ -45,9 +45,10 @@ function pickText(data: GeminiGenerateResponse): string | null {
 }
 
 export async function generateDailyJapanese(): Promise<string> {
+  const apiKey = requireEnv('GEMINI_API_KEY');
   const url = `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(
     env.GEMINI_MODEL
-  )}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const resp = await fetch(url, {
     method: 'POST',
