@@ -30,6 +30,33 @@ async function helloHttp(req, res) {
     const recentWords = getRecentWords({ langCode, limit: 30 });
     const thisWeekWords = dayOfWeek === 3 ? getThisWeekWords({ langCode, limit: 30 }) : [];
 
+    // 수요일(복습 퀴즈)인데 이번 주 단어가 없으면 Gemini를 거치지 않고 고정 안내만 전송
+    if (dayOfWeek === 3 && thisWeekWords.length === 0) {
+      const finalMessage = [
+        '💌 주간 일본어 챌린지!',
+        '',
+        '🧠 이번 주 단어 기억나?',
+        '이번 주에는 아직 보낸 단어가 없어서 복습 퀴즈를 만들 수 없어요.',
+        '',
+        '💡 한마디',
+        '다음 주부터 같이 차근차근 쌓아보자!'
+      ].join('\n');
+
+      try {
+        const tgResp = await sendMessage({
+          token: TELEGRAM_TOKEN,
+          chatId: CHAT_ID,
+          text: finalMessage
+        });
+        console.log('Telegram response:', JSON.stringify(tgResp, null, 2));
+      } catch (err) {
+        console.log('Telegram 전송 실패:', err);
+      }
+
+      res.status(200).send(finalMessage);
+      return;
+    }
+
     let aiText = 'AI 응답 실패 😭';
     try {
       const data = await generateContent({

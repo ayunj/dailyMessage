@@ -159,6 +159,9 @@ function buildJapanesePrompt(options = {}) {
 }
 
 function wrapFinalMessage(aiText) {
+  if (typeof aiText === 'string' && aiText.trim().startsWith('💌 주간 일본어 챌린지!')) {
+    return aiText;
+  }
   return `💌 오늘도 일본어 도착했어요!\n\n${aiText}`;
 }
 
