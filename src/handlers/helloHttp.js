@@ -2,6 +2,7 @@ const { GEMINI_API_KEY, TELEGRAM_TOKEN, CHAT_ID } = require('../config');
 const { generateContent, extractTextOrFail } = require('../services/gemini');
 const { sendMessage } = require('../services/telegram');
 const { getLanguage } = require('../languages');
+const { getRecentWords, addWord } = require('../services/wordHistory');
 
 function envReport() {
   return [
@@ -25,11 +26,13 @@ async function helloHttp(req, res) {
     const langCode = typeof req?.query?.lang === 'string' ? req.query.lang : 'ja';
     const lang = getLanguage(langCode);
 
+    const recentWords = getRecentWords({ langCode, limit: 30 });
+
     let aiText = 'AI 응답 실패 😭';
     try {
       const data = await generateContent({
         apiKey: GEMINI_API_KEY,
-        promptText: lang.buildPrompt()
+        promptText: lang.buildPrompt({ excludeWords: recentWords })
       });
       aiText = extractTextOrFail(data);
     } catch (err) {
@@ -39,6 +42,14 @@ async function helloHttp(req, res) {
     }
 
     const finalMessage = lang.wrapFinalMessage(aiText);
+
+    // Best-effort: extract the "오늘의 단어" line and remember it to reduce repeats next runs.
+    try {
+      const m = aiText.match(/^\s*단어\(한자\+히라가나 같이\):\s*(.+?)\s*$/m);
+      if (m && m[1]) addWord({ langCode, word: m[1], max: 200 });
+    } catch (e) {
+      console.log('단어 히스토리 저장 실패:', e);
+    }
 
     try {
       const tgResp = await sendMessage({

@@ -1,4 +1,15 @@
-function buildJapanesePrompt() {
+function buildJapanesePrompt(options = {}) {
+  const recentWords = Array.isArray(options?.excludeWords) ? options.excludeWords : [];
+  const excludeBlock =
+    recentWords.length > 0
+      ? [
+          '',
+          '추가 조건:',
+          `- 최근에 이미 보낸 단어는 제외하고, 아래 목록에 없는 단어로 골라.`,
+          `- 제외 목록: ${recentWords.join(', ')}`
+        ].join('\n')
+      : '';
+
   return [
     '너는 귀엽고 이해 잘 시켜주는 일본어 튜터야.',
     'JLPT N4 수준의 실생활 단어 1개를 골라서 아래 출력 형식을 "그대로" 지켜서 작성해.',
@@ -30,7 +41,7 @@ function buildJapanesePrompt() {
     '- 설명은 최대한 쉽게',
     '- 한자 포함 필수',
     '- 반드시 위 형식 유지'
-  ].join('\n');
+  ].join('\n') + excludeBlock;
 }
 
 function wrapFinalMessage(aiText) {
