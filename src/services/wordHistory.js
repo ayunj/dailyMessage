@@ -4,7 +4,8 @@ const path = require('path');
 function getHistoryFilePath() {
   const envPath = process.env.WORD_HISTORY_PATH;
   if (envPath && typeof envPath === 'string' && envPath.trim()) return envPath.trim();
-  return path.join(process.cwd(), 'data', 'word-history.json');
+  // Avoid relying on process.cwd() (can differ in serverless / Docker).
+  return path.join(__dirname, '..', '..', 'data', 'word-history.json');
 }
 
 function ensureDir(filePath) {
@@ -88,20 +89,21 @@ function getThisWeekWords({ langCode, limit = 50, now = new Date() }) {
 
 function addWord({ langCode, word, max = 200 }) {
   const w = normalizeWord(word);
-  if (!w) return;
+  if (!w) return { ok: false, reason: 'empty_word' };
 
   const { filePath, data } = loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
   const last = list.length > 0 ? normalizeEntry(list[list.length - 1]) : null;
 
   // Prevent immediate duplicates and keep unique-ish history.
-  if (last && last.word === w) return;
+  if (last && last.word === w) return { ok: true, saved: false, reason: 'duplicate_last', filePath };
   const next = [...list, { word: w, ts: Date.now() }];
 
   // Keep last max items.
   const trimmed = next.length > max ? next.slice(next.length - max) : next;
   const out = { ...(data || {}), [langCode]: trimmed };
   saveHistory(filePath, out);
+  return { ok: true, saved: true, filePath, word: w, size: trimmed.length };
 }
 
 module.exports = {

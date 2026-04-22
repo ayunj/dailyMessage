@@ -26,12 +26,13 @@ async function helloHttp(req, res) {
     const langCode = typeof req?.query?.lang === 'string' ? req.query.lang : 'ja';
     const lang = getLanguage(langCode);
     const dayOfWeek = new Date().getDay(); // 0=Sun ... 6=Sat
+    const isReviewDay = dayOfWeek === 6; // 토요일
 
     const recentWords = getRecentWords({ langCode, limit: 30 });
-    const thisWeekWords = dayOfWeek === 3 ? getThisWeekWords({ langCode, limit: 30 }) : [];
+    const thisWeekWords = isReviewDay ? getThisWeekWords({ langCode, limit: 30 }) : [];
 
-    // 수요일(복습 퀴즈)인데 이번 주 단어가 없으면 Gemini를 거치지 않고 고정 안내만 전송
-    if (dayOfWeek === 3 && thisWeekWords.length === 0) {
+    // 복습일(토요일)인데 이번 주 단어가 없으면 Gemini를 거치지 않고 고정 안내만 전송
+    if (isReviewDay && thisWeekWords.length === 0) {
       const finalMessage = [
         '💌 주간 일본어 챌린지!',
         '',
@@ -74,8 +75,22 @@ async function helloHttp(req, res) {
 
     // Best-effort: extract the "오늘의 단어" line and remember it to reduce repeats next runs.
     try {
-      const m = aiText.match(/^\s*단어\(한자\+히라가나 같이\):\s*(.+?)\s*$/m);
-      if (m && m[1]) addWord({ langCode, word: m[1], max: 200 });
+      // 주간 퀴즈는 단어 라벨이 없으니 저장 시도하지 않음
+      if (!isReviewDay) {
+        const patterns = [
+          /^\s*단어\(한자\+히라가나 같이\):\s*(.+?)\s*$/m,
+          /^\s*단어:\s*(.+?)\s*$/m,
+          /^\s*오늘의\s*단어\s*[:：]?\s*(.+?)\s*$/m
+        ];
+        const match = patterns.map((re) => aiText.match(re)).find((m) => m && m[1]);
+        const word = match?.[1] ? String(match[1]).trim() : '';
+        if (word) {
+          const result = addWord({ langCode, word, max: 200 });
+          console.log('단어 히스토리 저장:', JSON.stringify(result, null, 2));
+        } else {
+          console.log('단어 추출 실패: 응답에서 단어 라벨을 찾지 못함');
+        }
+      }
     } catch (e) {
       console.log('단어 히스토리 저장 실패:', e);
     }

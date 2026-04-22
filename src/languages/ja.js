@@ -1,7 +1,7 @@
 function buildJapanesePrompt(options = {}) {
   const recentWords = Array.isArray(options?.excludeWords) ? options.excludeWords : [];
   const dayOfWeek = Number.isInteger(options?.dayOfWeek) ? options.dayOfWeek : null;
-  const isSaturday = dayOfWeek === 3;
+  const isSaturday = dayOfWeek === 6;
   const thisWeekWords = Array.isArray(options?.thisWeekWords) ? options.thisWeekWords.filter(Boolean) : [];
   const excludeBlock =
     recentWords.length > 0
