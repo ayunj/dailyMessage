@@ -1,10 +1,16 @@
 const fetch = require('node-fetch');
 
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+function getGeminiEndpoint() {
+  const apiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  return `https://generativelanguage.googleapis.com/${apiVersion}/models/${encodeURIComponent(
+    model
+  )}:generateContent`;
+}
 
 async function generateContent({ apiKey, promptText }) {
-  const resp = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey || '')}`, {
+  const endpoint = getGeminiEndpoint();
+  const resp = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey || '')}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json'
