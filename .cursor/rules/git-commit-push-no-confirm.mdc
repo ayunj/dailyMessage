@@ -1,0 +1,14 @@
+---
+description: In this repo, commit+push immediately when user asks
+alwaysApply: true
+---
+
+# Git: "커밋푸시해줘"는 즉시 실행
+
+- 이 프로젝트에서는 사용자가 "커밋푸시해줘" / "커밋 푸시" 등으로 요청하면 **추가 확인 질문 없이** 바로 진행한다.
+- 안전 프로토콜은 유지한다:
+  - `git status`, `git diff`, `git log`로 변경 범위와 메시지 스타일을 먼저 확인
+  - 시크릿 가능 파일(.env 등)은 커밋 대상에서 제외/경고
+  - 훅 실패 시 `--no-verify`로 우회하지 않고 원인 해결 후 재커밋
+  - 강제 푸시/리베이스 등 파괴적 명령은 사용자가 명시 요청한 경우에만 수행
+
