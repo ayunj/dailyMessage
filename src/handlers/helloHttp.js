@@ -80,7 +80,8 @@ async function helloHttp(req, res) {
         const patterns = [
           /^\s*단어\(한자\+히라가나 같이\):\s*(.+?)\s*$/m,
           /^\s*단어:\s*(.+?)\s*$/m,
-          /^\s*오늘의\s*단어\s*[:：]?\s*(.+?)\s*$/m
+          /^\s*오늘의\s*단어\s*[:：]?\s*(.+?)\s*$/m,
+          /🌸\s*오늘의\s*단어\s*🌸\s*\n\s*(.+?)\s*$/m
         ];
         const match = patterns.map((re) => aiText.match(re)).find((m) => m && m[1]);
         const word = match?.[1] ? String(match[1]).trim() : '';
