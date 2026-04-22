@@ -2,7 +2,7 @@ const { GEMINI_API_KEY, TELEGRAM_TOKEN, CHAT_ID } = require('../config');
 const { generateContent, extractTextOrFail } = require('../services/gemini');
 const { sendMessage } = require('../services/telegram');
 const { getLanguage } = require('../languages');
-const { getRecentWords, addWord } = require('../services/wordHistory');
+const { getRecentWords, getThisWeekWords, addWord } = require('../services/wordHistory');
 
 function envReport() {
   return [
@@ -25,14 +25,16 @@ async function helloHttp(req, res) {
     // 확장 포인트: ?lang=ja|en|zh
     const langCode = typeof req?.query?.lang === 'string' ? req.query.lang : 'ja';
     const lang = getLanguage(langCode);
+    const dayOfWeek = new Date().getDay(); // 0=Sun ... 6=Sat
 
     const recentWords = getRecentWords({ langCode, limit: 30 });
+    const thisWeekWords = dayOfWeek === 3 ? getThisWeekWords({ langCode, limit: 30 }) : [];
 
     let aiText = 'AI 응답 실패 😭';
     try {
       const data = await generateContent({
         apiKey: GEMINI_API_KEY,
-        promptText: lang.buildPrompt({ excludeWords: recentWords })
+        promptText: lang.buildPrompt({ excludeWords: recentWords, dayOfWeek, thisWeekWords })
       });
       aiText = extractTextOrFail(data);
     } catch (err) {
