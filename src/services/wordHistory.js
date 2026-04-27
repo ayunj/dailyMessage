@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { startOfWeekTsInTimeZone } = require('../utils/timeZone');
 
 function getHistoryFilePath() {
   const envPath = process.env.WORD_HISTORY_PATH;
@@ -35,14 +36,9 @@ function normalizeEntry(entry) {
   return { word, ts };
 }
 
-function startOfWeekTs(date = new Date()) {
-  // Monday 00:00:00 local time as week start.
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun..6=Sat
-  const diffToMonday = (day + 6) % 7; // Mon->0, Tue->1, ... Sun->6
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - diffToMonday);
-  return d.getTime();
+function startOfWeekTs(date = new Date(), timeZone = 'Asia/Seoul') {
+  // Monday 00:00:00 in the given timeZone as week start.
+  return startOfWeekTsInTimeZone(date, timeZone);
 }
 
 function loadHistory() {
@@ -73,10 +69,10 @@ function getRecentWords({ langCode, limit = 50 }) {
     .filter(Boolean);
 }
 
-function getThisWeekWords({ langCode, limit = 50, now = new Date() }) {
+function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZone = 'Asia/Seoul' }) {
   const { data } = loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
-  const since = startOfWeekTs(now);
+  const since = startOfWeekTs(now, timeZone);
 
   const words = list
     .map(normalizeEntry)

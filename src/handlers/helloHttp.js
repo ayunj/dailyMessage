@@ -3,6 +3,7 @@ const { generateContent, extractTextOrFail } = require('../services/gemini');
 const { sendMessage } = require('../services/telegram');
 const { getLanguage } = require('../languages');
 const { getRecentWords, getThisWeekWords, addWord } = require('../services/wordHistory');
+const { getWeekdayIndexInTimeZone } = require('../utils/timeZone');
 
 function envReport() {
   return [
@@ -25,11 +26,33 @@ async function helloHttp(req, res) {
     // 확장 포인트: ?lang=ja|en|zh
     const langCode = typeof req?.query?.lang === 'string' ? req.query.lang : 'ja';
     const lang = getLanguage(langCode);
-    const dayOfWeek = new Date().getDay(); // 0=Sun ... 6=Sat
-    const isReviewDay = dayOfWeek === 6; // 토요일
+
+    // Cloud Run/Functions default TZ can be UTC. Use IANA timeZone to ensure "토요일" is in KST.
+    const timeZone = typeof process.env.TIME_ZONE === 'string' && process.env.TIME_ZONE.trim()
+      ? process.env.TIME_ZONE.trim()
+      : 'Asia/Seoul';
+    const now = new Date();
+    const dayOfWeek = getWeekdayIndexInTimeZone(now, timeZone); // 0=Sun ... 6=Sat (in timeZone)
+    const isReviewDay = dayOfWeek === 6; // 토요일 (in timeZone)
 
     const recentWords = getRecentWords({ langCode, limit: 30 });
-    const thisWeekWords = isReviewDay ? getThisWeekWords({ langCode, limit: 30 }) : [];
+    const thisWeekWords = isReviewDay ? getThisWeekWords({ langCode, limit: 30, now, timeZone }) : [];
+
+    console.log(
+      'Run context:',
+      JSON.stringify(
+        {
+          timeZone,
+          now: now.toISOString(),
+          dayOfWeek,
+          isReviewDay,
+          recentWordsCount: recentWords.length,
+          thisWeekWordsCount: thisWeekWords.length
+        },
+        null,
+        2
+      )
+    );
 
     // 복습일(토요일)인데 이번 주 단어가 없으면 Gemini를 거치지 않고 고정 안내만 전송
     if (isReviewDay && thisWeekWords.length === 0) {
