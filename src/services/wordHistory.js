@@ -1,12 +1,25 @@
 const fs = require('fs');
 const path = require('path');
+const { Storage } = require('@google-cloud/storage');
 const { startOfWeekTsInTimeZone } = require('../utils/timeZone');
 
-function getHistoryFilePath() {
+function getHistoryLocation() {
+  const gcsUri = process.env.WORD_HISTORY_GCS_URI;
+  if (gcsUri && typeof gcsUri === 'string' && gcsUri.trim()) return gcsUri.trim();
+
   const envPath = process.env.WORD_HISTORY_PATH;
   if (envPath && typeof envPath === 'string' && envPath.trim()) return envPath.trim();
+
   // Avoid relying on process.cwd() (can differ in serverless / Docker).
   return path.join(__dirname, '..', '..', 'data', 'word-history.json');
+}
+
+function parseGcsUri(uri) {
+  // gs://bucket/path/to/file.json
+  if (typeof uri !== 'string') return null;
+  const m = uri.match(/^gs:\/\/([^/]+)\/(.+)$/);
+  if (!m) return null;
+  return { bucket: m[1], file: m[2] };
 }
 
 function ensureDir(filePath) {
@@ -41,26 +54,54 @@ function startOfWeekTs(date = new Date(), timeZone = 'Asia/Seoul') {
   return startOfWeekTsInTimeZone(date, timeZone);
 }
 
-function loadHistory() {
-  const filePath = getHistoryFilePath();
+async function loadHistory() {
+  const location = getHistoryLocation();
+  const gcs = parseGcsUri(location);
+
+  if (gcs) {
+    const storage = new Storage();
+    const file = storage.bucket(gcs.bucket).file(gcs.file);
+    try {
+      const [buf] = await file.download();
+      const json = safeParseJson(buf.toString('utf8'));
+      if (!json || typeof json !== 'object') return { location, data: {} };
+      return { location, data: json };
+    } catch (e) {
+      // Not found / not readable -> treat as empty.
+      return { location, data: {} };
+    }
+  }
+
+  const filePath = location;
   try {
-    if (!fs.existsSync(filePath)) return { filePath, data: {} };
+    if (!fs.existsSync(filePath)) return { location: filePath, data: {} };
     const raw = fs.readFileSync(filePath, 'utf8');
     const json = safeParseJson(raw);
-    if (!json || typeof json !== 'object') return { filePath, data: {} };
-    return { filePath, data: json };
+    if (!json || typeof json !== 'object') return { location: filePath, data: {} };
+    return { location: filePath, data: json };
   } catch {
-    return { filePath, data: {} };
+    return { location: filePath, data: {} };
   }
 }
 
-function saveHistory(filePath, data) {
+async function saveHistory(location, data) {
+  const gcs = parseGcsUri(location);
+  const body = JSON.stringify(data, null, 2);
+
+  if (gcs) {
+    const storage = new Storage();
+    const file = storage.bucket(gcs.bucket).file(gcs.file);
+    await file.save(body, { contentType: 'application/json; charset=utf-8' });
+    return;
+  }
+
+  const filePath = location;
   ensureDir(filePath);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(filePath, body, 'utf8');
 }
 
-function getRecentWords({ langCode, limit = 50 }) {
-  const { data } = loadHistory();
+async function getRecentWords({ langCode, limit = 50 }) {
+  const { data } = await loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
   return list
     .slice(-limit)
@@ -69,8 +110,8 @@ function getRecentWords({ langCode, limit = 50 }) {
     .filter(Boolean);
 }
 
-function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZone = 'Asia/Seoul' }) {
-  const { data } = loadHistory();
+async function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZone = 'Asia/Seoul' }) {
+  const { data } = await loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
   const since = startOfWeekTs(now, timeZone);
 
@@ -83,23 +124,23 @@ function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZone = '
   return words.length > limit ? words.slice(words.length - limit) : words;
 }
 
-function addWord({ langCode, word, max = 200 }) {
+async function addWord({ langCode, word, max = 200 }) {
   const w = normalizeWord(word);
   if (!w) return { ok: false, reason: 'empty_word' };
 
-  const { filePath, data } = loadHistory();
+  const { location, data } = await loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
   const last = list.length > 0 ? normalizeEntry(list[list.length - 1]) : null;
 
   // Prevent immediate duplicates and keep unique-ish history.
-  if (last && last.word === w) return { ok: true, saved: false, reason: 'duplicate_last', filePath };
+  if (last && last.word === w) return { ok: true, saved: false, reason: 'duplicate_last', location };
   const next = [...list, { word: w, ts: Date.now() }];
 
   // Keep last max items.
   const trimmed = next.length > max ? next.slice(next.length - max) : next;
   const out = { ...(data || {}), [langCode]: trimmed };
-  saveHistory(filePath, out);
-  return { ok: true, saved: true, filePath, word: w, size: trimmed.length };
+  await saveHistory(location, out);
+  return { ok: true, saved: true, location, word: w, size: trimmed.length };
 }
 
 module.exports = {
