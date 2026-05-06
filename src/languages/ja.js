@@ -3,6 +3,17 @@ function buildJapanesePrompt(options = {}) {
   const dayOfWeek = Number.isInteger(options?.dayOfWeek) ? options.dayOfWeek : null;
   const isSaturday = dayOfWeek === 6;
   const thisWeekWords = Array.isArray(options?.thisWeekWords) ? options.thisWeekWords.filter(Boolean) : [];
+  const uniqueKeepFirst = (arr) => {
+    const seen = new Set();
+    const out = [];
+    for (const v of arr) {
+      if (!v) continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    return out;
+  };
   const excludeBlock =
     recentWords.length > 0
       ? [
@@ -14,7 +25,8 @@ function buildJapanesePrompt(options = {}) {
       : '';
 
   if (isSaturday) {
-    const weeklyList = thisWeekWords.length > 0 ? thisWeekWords : recentWords;
+    const weeklyRaw = thisWeekWords.length > 0 ? thisWeekWords : recentWords;
+    const weeklyList = uniqueKeepFirst(weeklyRaw);
 
     if (weeklyList.length === 0) {
       return [
@@ -35,8 +47,11 @@ function buildJapanesePrompt(options = {}) {
       '한자는 문제에 절대 사용하지 말고, 정답에서만 보조로 사용한다.',
       '',
       '이번 주 단어 목록: ' + weeklyList.join(', '),
-      '- 위 목록에 있는 단어만 사용해 Q1~Q5를 만들어라. (새 단어 금지)',
-      '- 단어가 5개보다 적으면 있는 개수만큼만 Q를 만들어라.',
+      '- 위 목록에 있는 단어만 사용해 퀴즈를 만들어라. (새 단어 금지)',
+      '- 문항 수는 목록 개수와 5 중 작은 값만큼만 만든다. (부족하면 절대 채우지 말 것)',
+      '- 각 문항은 목록의 "서로 다른 단어"를 정확히 1번씩만 사용한다. (같은 단어 재사용 금지)',
+      '- 목록의 "앞에서부터" 최대 5개를 순서대로 사용해 Q1~Qn을 만든다. (임의 선택 금지)',
+      '- Q들 사이에서 같은 한국어 뜻이 반복되지 않게 해라.',
       '',
       '출력 형식을 반드시 지켜라:',
       '',

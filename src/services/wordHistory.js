@@ -49,6 +49,22 @@ function normalizeEntry(entry) {
   return { word, ts };
 }
 
+function uniqueKeepLast(items) {
+  // Deduplicate while preserving the *last* occurrence order.
+  // Example: [a, b, a, c] -> [b, a, c]
+  const seen = new Set();
+  const outReversed = [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const v = items[i];
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    outReversed.push(v);
+  }
+  outReversed.reverse();
+  return outReversed;
+}
+
 function startOfWeekTs(date = new Date(), timeZone = 'Asia/Seoul') {
   // Monday 00:00:00 in the given timeZone as week start.
   return startOfWeekTsInTimeZone(date, timeZone);
@@ -120,8 +136,10 @@ async function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZo
     .filter((e) => e.word && Number.isFinite(e.ts) && e.ts >= since)
     .map((e) => e.word);
 
+  const uniqueWords = uniqueKeepLast(words);
+
   // Keep order and cap to last `limit` items.
-  return words.length > limit ? words.slice(words.length - limit) : words;
+  return uniqueWords.length > limit ? uniqueWords.slice(uniqueWords.length - limit) : uniqueWords;
 }
 
 async function addWord({ langCode, word, max = 200 }) {
