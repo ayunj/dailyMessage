@@ -29,6 +29,20 @@ function getCandidateModels() {
   ];
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientError(status, errText) {
+  if (status === 503 || status === 429) return true;
+  const lower = (errText || '').toLowerCase();
+  return (
+    lower.includes('high demand') ||
+    lower.includes('resource exhausted') ||
+    lower.includes('overloaded')
+  );
+}
+
 async function listModels({ apiKey, apiVersion }) {
   const url = `https://generativelanguage.googleapis.com/${apiVersion}/models?key=${encodeURIComponent(
     apiKey || ''
@@ -59,13 +73,31 @@ async function generateContent({ apiKey, promptText }) {
   for (const apiVersion of apiVersions) {
     for (const model of models) {
       const endpoint = buildEndpoint({ apiVersion, model });
-      const resp = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey || '')}`, {
+      const url = `${endpoint}?key=${encodeURIComponent(apiKey || '')}`;
+      const fetchOptions = {
         method: 'POST',
         headers: {
           'content-type': 'application/json'
         },
         body
-      });
+      };
+
+      let resp = null;
+      let errText = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        resp = await fetch(url, fetchOptions);
+        if (resp.ok) break;
+
+        errText = await resp.text().catch(() => '');
+        if (!isTransientError(resp.status, errText) || attempt === 2) break;
+
+        const delayMs = 1000 * (attempt + 1);
+        console.log(
+          'Gemini transient error, retrying:',
+          JSON.stringify({ apiVersion, model, status: resp.status, attempt: attempt + 1, delayMs })
+        );
+        await sleep(delayMs);
+      }
 
       if (resp.ok) {
         const data = await resp.json();
@@ -84,16 +116,14 @@ async function generateContent({ apiKey, promptText }) {
         return data;
       }
 
-      const errText = await resp.text().catch(() => '');
       const err = new Error(`Gemini API HTTP ${resp.status} ${resp.statusText}: ${errText}`);
       err.status = resp.status;
       err.apiVersion = apiVersion;
       err.model = model;
       lastErr = err;
 
-      // If the model is not found / unsupported, try next candidate.
-      if (resp.status === 404) continue;
-      // Non-404 errors (auth/quota/etc.) are unlikely to improve with retries.
+      // 404: unsupported model. 503/429/high demand: try next model.
+      if (resp.status === 404 || isTransientError(resp.status, errText)) continue;
       throw err;
     }
 
