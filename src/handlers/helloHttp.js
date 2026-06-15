@@ -4,6 +4,7 @@ const { sendMessage } = require('../services/telegram');
 const { getLanguage } = require('../languages');
 const { getRecentWords, getThisWeekWords, addWord } = require('../services/wordHistory');
 const { getWeekdayIndexInTimeZone } = require('../utils/timeZone');
+const { extractWordFromAiText } = require('../utils/extractWord');
 
 function envReport() {
   return [
@@ -97,23 +98,21 @@ async function helloHttp(req, res) {
     const finalMessage = lang.wrapFinalMessage(aiText);
 
     // Best-effort: extract the "오늘의 단어" line and remember it to reduce repeats next runs.
-    try {
-      const patterns = [
-        /^\s*단어\(한자\+히라가나 같이\):\s*(.+?)\s*$/m,
-        /^\s*단어:\s*(.+?)\s*$/m,
-        /^\s*오늘의\s*단어\s*[:：]?\s*(.+?)\s*$/m,
-        /🌸\s*오늘의\s*단어\s*🌸\s*\n\s*(.+?)\s*$/m
-      ];
-      const match = patterns.map((re) => aiText.match(re)).find((m) => m && m[1]);
-      const word = match?.[1] ? String(match[1]).trim() : '';
-      if (word) {
-        const result = await addWord({ langCode, word, max: 200 });
-        console.log('단어 히스토리 저장:', JSON.stringify(result, null, 2));
-      } else {
-        console.log('단어 추출 실패: 응답에서 단어 라벨을 찾지 못함');
+    if (!isReviewDay) {
+      try {
+        const word = extractWordFromAiText(aiText);
+        if (word) {
+          const result = await addWord({ langCode, word, max: 200 });
+          console.log('단어 히스토리 저장:', JSON.stringify(result, null, 2));
+        } else {
+          console.log(
+            '단어 추출 실패: 응답에서 단어 라벨을 찾지 못함',
+            JSON.stringify({ preview: aiText.slice(0, 500) })
+          );
+        }
+      } catch (e) {
+        console.log('단어 히스토리 저장 실패:', e);
       }
-    } catch (e) {
-      console.log('단어 히스토리 저장 실패:', e);
     }
 
     try {
