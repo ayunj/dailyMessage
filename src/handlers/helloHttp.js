@@ -5,6 +5,9 @@ const { getLanguage } = require('../languages');
 const { getRecentWords, getThisWeekWords, addWord } = require('../services/wordHistory');
 const { getWeekdayIndexInTimeZone } = require('../utils/timeZone');
 const { extractWordFromAiText } = require('../utils/extractWord');
+const { isWordExcluded } = require('../utils/japaneseWord');
+
+const MAX_WORD_GENERATION_ATTEMPTS = 3;
 
 function envReport() {
   return [
@@ -83,12 +86,31 @@ async function helloHttp(req, res) {
     }
 
     let aiText = 'AI 응답 실패 😭';
+    let excludeWords = [...recentWords];
     try {
-      const data = await generateContent({
-        apiKey: GEMINI_API_KEY,
-        promptText: lang.buildPrompt({ excludeWords: recentWords, dayOfWeek, thisWeekWords })
-      });
-      aiText = extractTextOrFail(data);
+      for (let attempt = 1; attempt <= MAX_WORD_GENERATION_ATTEMPTS; attempt += 1) {
+        const data = await generateContent({
+          apiKey: GEMINI_API_KEY,
+          promptText: lang.buildPrompt({ excludeWords, dayOfWeek, thisWeekWords })
+        });
+        aiText = extractTextOrFail(data);
+
+        if (isReviewDay) break;
+
+        const candidateWord = extractWordFromAiText(aiText);
+        if (!candidateWord || !isWordExcluded(candidateWord, excludeWords)) break;
+
+        console.log(
+          '중복 단어 감지, 재생성 시도:',
+          JSON.stringify({ attempt, word: candidateWord, excludeCount: excludeWords.length })
+        );
+        if (!excludeWords.some((w) => w === candidateWord)) {
+          excludeWords = [...excludeWords, candidateWord];
+        }
+        if (attempt === MAX_WORD_GENERATION_ATTEMPTS) {
+          console.log('중복 단어 재생성 한도 도달:', JSON.stringify({ word: candidateWord }));
+        }
+      }
     } catch (err) {
       // 에러 처리: Gemini API 실패 시 로그 출력
       console.log('Gemini API 실패:', err);

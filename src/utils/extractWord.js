@@ -1,5 +1,12 @@
+function normalizeWordLine(line) {
+  return String(line || '')
+    .trim()
+    .replace(/（/g, '(')
+    .replace(/）/g, ')');
+}
+
 function looksLikeJapaneseWord(line) {
-  const trimmed = String(line || '').trim();
+  const trimmed = normalizeWordLine(line);
   if (!trimmed) return false;
   if (/^\(.+\)$/.test(trimmed)) return false;
   if (/^[🧠🍡✨💡👉🌸]/.test(trimmed)) return false;
@@ -24,7 +31,7 @@ function extractWordFromAiText(aiText) {
 
   for (const re of patterns) {
     const match = text.match(re);
-    const word = match?.[1] ? String(match[1]).trim() : '';
+    const word = match?.[1] ? normalizeWordLine(match[1]) : '';
     if (word && looksLikeJapaneseWord(word)) return word;
   }
 
@@ -32,7 +39,7 @@ function extractWordFromAiText(aiText) {
   for (let i = 0; i < lines.length; i++) {
     if (!/🌸\s*오늘의\s*단어\s*🌸/.test(lines[i])) continue;
     for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
-      const candidate = lines[j].trim();
+      const candidate = normalizeWordLine(lines[j]);
       if (looksLikeJapaneseWord(candidate)) return candidate;
     }
   }

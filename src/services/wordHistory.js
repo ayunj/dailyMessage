@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Storage } = require('@google-cloud/storage');
 const { startOfWeekTsInTimeZone } = require('../utils/timeZone');
+const { isSameJapaneseWord, uniqueJapaneseWordsKeepLast } = require('../utils/japaneseWord');
 
 function getHistoryLocation() {
   const gcsUri = process.env.WORD_HISTORY_GCS_URI;
@@ -47,22 +48,6 @@ function normalizeEntry(entry) {
   const word = normalizeWord(entry.word);
   const ts = Number.isFinite(entry.ts) ? entry.ts : null;
   return { word, ts };
-}
-
-function uniqueKeepLast(items) {
-  // Deduplicate while preserving the *last* occurrence order.
-  // Example: [a, b, a, c] -> [b, a, c]
-  const seen = new Set();
-  const outReversed = [];
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const v = items[i];
-    if (!v) continue;
-    if (seen.has(v)) continue;
-    seen.add(v);
-    outReversed.push(v);
-  }
-  outReversed.reverse();
-  return outReversed;
 }
 
 function startOfWeekTs(date = new Date(), timeZone = 'Asia/Seoul') {
@@ -119,11 +104,12 @@ async function saveHistory(location, data) {
 async function getRecentWords({ langCode, limit = 50 }) {
   const { data } = await loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
-  return list
-    .slice(-limit)
+  const words = list
     .map(normalizeEntry)
     .map((e) => e.word)
     .filter(Boolean);
+  const uniqueWords = uniqueJapaneseWordsKeepLast(words);
+  return uniqueWords.length > limit ? uniqueWords.slice(uniqueWords.length - limit) : uniqueWords;
 }
 
 async function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZone = 'Asia/Seoul' }) {
@@ -136,7 +122,7 @@ async function getThisWeekWords({ langCode, limit = 50, now = new Date(), timeZo
     .filter((e) => e.word && Number.isFinite(e.ts) && e.ts >= since)
     .map((e) => e.word);
 
-  const uniqueWords = uniqueKeepLast(words);
+  const uniqueWords = uniqueJapaneseWordsKeepLast(words);
 
   // Keep order and cap to last `limit` items.
   return uniqueWords.length > limit ? uniqueWords.slice(uniqueWords.length - limit) : uniqueWords;
@@ -148,10 +134,10 @@ async function addWord({ langCode, word, max = 200 }) {
 
   const { location, data } = await loadHistory();
   const list = Array.isArray(data?.[langCode]) ? data[langCode] : [];
-  const last = list.length > 0 ? normalizeEntry(list[list.length - 1]) : null;
-
-  // Prevent immediate duplicates and keep unique-ish history.
-  if (last && last.word === w) return { ok: true, saved: false, reason: 'duplicate_last', location };
+  const existingWords = list.map(normalizeEntry).map((e) => e.word).filter(Boolean);
+  if (existingWords.some((existing) => isSameJapaneseWord(existing, w))) {
+    return { ok: true, saved: false, reason: 'duplicate_existing', location };
+  }
   const next = [...list, { word: w, ts: Date.now() }];
 
   // Keep last max items.
