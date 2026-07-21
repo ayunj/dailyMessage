@@ -55,6 +55,17 @@ function startOfWeekTs(date = new Date(), timeZone = 'Asia/Seoul') {
   return startOfWeekTsInTimeZone(date, timeZone);
 }
 
+function describeHistoryLocation() {
+  const location = getHistoryLocation();
+  const isGcs = !!parseGcsUri(location);
+  // Cloud Run / Cloud Functions set K_SERVICE. On these, the container filesystem
+  // is ephemeral, so a local-file location silently loses saved words on restart.
+  const isServerless = !!(process.env.K_SERVICE || process.env.FUNCTION_TARGET);
+  const persistent = isGcs; // only GCS survives restarts/scaling in serverless
+  const volatileInServerless = isServerless && !isGcs;
+  return { location, isGcs, isServerless, persistent, volatileInServerless };
+}
+
 async function loadHistory() {
   const location = getHistoryLocation();
   const gcs = parseGcsUri(location);
@@ -150,6 +161,7 @@ async function addWord({ langCode, word, max = 200 }) {
 module.exports = {
   getRecentWords,
   getThisWeekWords,
-  addWord
+  addWord,
+  describeHistoryLocation
 };
 

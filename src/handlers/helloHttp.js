@@ -2,7 +2,7 @@ const { GEMINI_API_KEY, TELEGRAM_TOKEN, CHAT_ID } = require('../config');
 const { generateContent, extractTextOrFail } = require('../services/gemini');
 const { sendMessage } = require('../services/telegram');
 const { getLanguage } = require('../languages');
-const { getRecentWords, getThisWeekWords, addWord } = require('../services/wordHistory');
+const { getRecentWords, getThisWeekWords, addWord, describeHistoryLocation } = require('../services/wordHistory');
 const { getWeekdayIndexInTimeZone } = require('../utils/timeZone');
 const { extractWordFromAiText } = require('../utils/extractWord');
 const { isWordExcluded } = require('../utils/japaneseWord');
@@ -39,7 +39,24 @@ async function helloHttp(req, res) {
     const dayOfWeek = getWeekdayIndexInTimeZone(now, timeZone); // 0=Sun ... 6=Sat (in timeZone)
     const isReviewDay = dayOfWeek === 6; // 토요일 (in timeZone)
 
-    const recentWords = await getRecentWords({ langCode, limit: 30 });
+    // 히스토리 저장 위치 진단: 서버리스에서 로컬 파일이면 재기동 시 저장이 사라져
+    // 제외 목록이 누적되지 않고 같은 단어가 반복될 수 있음.
+    const historyInfo = describeHistoryLocation();
+    console.log('Word history location:', JSON.stringify(historyInfo, null, 2));
+    if (historyInfo.volatileInServerless) {
+      console.warn(
+        '[경고] 단어 히스토리가 휘발성 로컬 파일에 저장되고 있습니다. ' +
+          '재기동 시 저장이 사라져 이미 보낸 단어가 반복될 수 있습니다. ' +
+          'WORD_HISTORY_GCS_URI(gs://버킷/경로.json)를 설정해 영구 저장하세요. ' +
+          `현재 위치: ${historyInfo.location}`
+      );
+    }
+
+    // 제외 목록(중복 방지)의 창 크기를 저장 히스토리 보관 개수(addWord max=200)와
+    // 동일하게 맞춘다. 여기가 더 작으면, 히스토리엔 남아있지만 제외 목록엔 없는
+    // "옛날에 보낸 단어"가 다시 생성·전송될 수 있다(=이미 받은 단어 반복).
+    const HISTORY_MAX = 200;
+    const recentWords = await getRecentWords({ langCode, limit: HISTORY_MAX });
     const thisWeekWords = isReviewDay ? await getThisWeekWords({ langCode, limit: 30, now, timeZone }) : [];
 
     console.log(
@@ -124,7 +141,7 @@ async function helloHttp(req, res) {
       try {
         const word = extractWordFromAiText(aiText);
         if (word) {
-          const result = await addWord({ langCode, word, max: 200 });
+          const result = await addWord({ langCode, word, max: HISTORY_MAX });
           console.log('단어 히스토리 저장:', JSON.stringify(result, null, 2));
         } else {
           console.log(
